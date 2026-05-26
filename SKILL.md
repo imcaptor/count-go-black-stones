@@ -47,6 +47,8 @@ python3 /path/to/count-go-black-stones/scripts/count_go_black_stones.py board.jp
   --overlay /tmp/go-count-overlay.jpg
 ```
 
+If the supplied corners are the four outer grid intersections rather than the wooden board corners, add `--grid-corners`.
+
 ## Interpretation
 
 - Report `black_stones` when the user literally asks how many black stones are visible.

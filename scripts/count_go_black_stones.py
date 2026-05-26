@@ -323,6 +323,11 @@ def choose_board(image: np.ndarray, corners: np.ndarray | None, board_size: int,
     return order_points(chosen), warped, xfit, yfit
 
 
+def fixed_grid_fit(warp_size: int, board_size: int) -> GridFit:
+    spacing = (warp_size - 1) / float(board_size - 1)
+    return GridFit(0.0, spacing, float(board_size), board_size, board_size)
+
+
 def classify_intersections(
     warped: np.ndarray,
     xfit: GridFit,
@@ -757,6 +762,7 @@ def main() -> int:
     parser.add_argument("--board-size", type=int, default=19, help="Number of grid lines, default: 19")
     parser.add_argument("--warp-size", type=int, default=1200, help="Internal square board size in pixels")
     parser.add_argument("--corners", help="Four board corners as 'x,y x,y x,y x,y', clockwise from top-left")
+    parser.add_argument("--grid-corners", action="store_true", help="Treat --corners as the four outer grid intersections instead of the wooden board corners")
     parser.add_argument("--overlay", type=Path, help="Write a warped-board overlay image for verification")
     parser.add_argument("--result-image", type=Path, help="Write a clean static result board image")
     parser.add_argument("--result-size", type=int, default=1200, help="Pixel size for --result-image, default: 1200")
@@ -770,7 +776,15 @@ def main() -> int:
 
     image = read_image(args.image)
     manual_corners = parse_corners(args.corners) if args.corners else None
-    corners, warped, xfit, yfit = choose_board(image, manual_corners, args.board_size, args.warp_size)
+    if args.grid_corners and manual_corners is None:
+        raise SystemExit("--grid-corners requires --corners")
+    if args.grid_corners:
+        corners = order_points(manual_corners)
+        warped = warp_board(image, corners, args.warp_size)
+        xfit = fixed_grid_fit(args.warp_size, args.board_size)
+        yfit = fixed_grid_fit(args.warp_size, args.board_size)
+    else:
+        corners, warped, xfit, yfit = choose_board(image, manual_corners, args.board_size, args.warp_size)
     board = classify_intersections(warped, xfit, yfit, args.board_size)
     counts, territory = score_territory(board)
     result = build_result(args.image, corners, xfit, yfit, board, territory, counts, args.board_size)
