@@ -1,0 +1,4 @@
+interface:
+  display_name: "Count Go Black Stones"
+  short_description: "Count black Go stones from board photos"
+  default_prompt: "Use $count-go-black-stones to count black's stones and render a clean result board from this Go board photo."
