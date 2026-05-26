@@ -20,6 +20,9 @@ except ImportError as exc:
     ) from exc
 
 
+CHINESE_RULE_BLACK_KOMI_STONES = 3.75
+
+
 @dataclass
 class GridFit:
     offset: float
@@ -514,12 +517,23 @@ def load_display_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont
     return ImageFont.load_default()
 
 
+def black_chinese_area_judgement(black_area: int, board_size: int) -> dict[str, object]:
+    win_threshold = math.floor((board_size * board_size) / 2.0 + CHINESE_RULE_BLACK_KOMI_STONES) + 1
+    black_wins = black_area >= win_threshold
+    return {
+        "black_result_chinese": "胜" if black_wins else "负",
+        "black_wins_chinese": black_wins,
+        "black_win_threshold_chinese": win_threshold,
+        "black_komi_stones_chinese": CHINESE_RULE_BLACK_KOMI_STONES,
+    }
+
+
 def text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> tuple[int, int]:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 
-def add_score_footer(board_image: np.ndarray, black_area: int) -> np.ndarray:
+def add_score_footer(board_image: np.ndarray, counts: dict[str, int], judgement: dict[str, object]) -> np.ndarray:
     board_size = board_image.shape[1]
     footer_height = max(126, int(round(board_size * 0.135)))
     footer = np.full((footer_height, board_size, 3), (244, 246, 242), dtype=np.uint8)
@@ -531,17 +545,18 @@ def add_score_footer(board_image: np.ndarray, black_area: int) -> np.ndarray:
     draw = ImageDraw.Draw(pil_image)
     font = load_display_font(max(34, int(round(board_size * 0.055))))
 
-    label_left = "黑"
-    label_num = f"{black_area}"
-    label_right = "子"
+    labels = [
+        ("黑", (60, 128, 92)),
+        (f"{counts['black_area_chinese']}", (190, 92, 54)),
+        ("子", (60, 128, 92)),
+        (str(judgement["black_result_chinese"]), (36, 132, 78) if judgement["black_wins_chinese"] else (174, 68, 64)),
+    ]
     gap = max(16, int(round(board_size * 0.018)))
     stone_radius = max(13, int(round(board_size * 0.016)))
 
-    left_w, left_h = text_size(draw, label_left, font)
-    num_w, num_h = text_size(draw, label_num, font)
-    right_w, right_h = text_size(draw, label_right, font)
-    text_h = max(left_h, num_h, right_h)
-    total_w = stone_radius * 2 + gap + left_w + gap + num_w + gap + right_w
+    label_sizes = [text_size(draw, text, font) for text, _ in labels]
+    text_h = max(height for _, height in label_sizes)
+    total_w = stone_radius * 2 + gap + sum(width for width, _ in label_sizes) + gap * (len(labels) - 1)
     start_x = int(round((board_size - total_w) / 2))
     center_y = footer_height // 2
     text_y = int(round(center_y - text_h / 2 - board_size * 0.004))
@@ -570,11 +585,9 @@ def add_score_footer(board_image: np.ndarray, black_area: int) -> np.ndarray:
     )
 
     x = start_x + stone_radius * 2 + gap
-    draw.text((x, text_y), label_left, fill=(60, 128, 92), font=font)
-    x += left_w + gap
-    draw.text((x, text_y), label_num, fill=(190, 92, 54), font=font)
-    x += num_w + gap
-    draw.text((x, text_y), label_right, fill=(60, 128, 92), font=font)
+    for (text, color), (width, _) in zip(labels, label_sizes):
+        draw.text((x, text_y), text, fill=color, font=font)
+        x += width + gap
 
     footer = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     return np.vstack([board_image, footer])
@@ -584,6 +597,7 @@ def render_result_board(
     board: list[list[str]],
     territory: list[list[str]],
     counts: dict[str, int],
+    judgement: dict[str, object],
     output_size: int,
 ) -> np.ndarray:
     size = len(board)
@@ -663,7 +677,7 @@ def render_result_board(
             center = (int(round(pad + col * cell)), int(round(pad + row * cell)))
             draw_stone(image, center, stone_radius, value)
 
-    return add_score_footer(image, counts["black_area_chinese"])
+    return add_score_footer(image, counts, judgement)
 
 
 def board_to_strings(board: list[list[str]]) -> list[str]:
@@ -714,6 +728,7 @@ def build_result(
     area_expected = board_size * board_size
     if area_total != area_expected:
         warnings.append(f"Area check failed: black_area_chinese + white_area_chinese = {area_total}, expected {area_expected}.")
+    judgement = black_chinese_area_judgement(counts["black_area_chinese"], board_size)
 
     return {
         "image": str(image_path),
@@ -728,6 +743,7 @@ def build_result(
         "area_total": area_total,
         "area_expected": area_expected,
         "area_total_ok": area_total == area_expected,
+        **judgement,
         "likely_scoring_overlay": likely_scoring_overlay,
         "board_corners": [[round(float(x), 2), round(float(y), 2)] for x, y in corners],
         "grid": {
@@ -751,6 +767,10 @@ def print_human(result: dict[str, object], overlay: Path | None) -> None:
     print(f"Black territory: {result['black_territory']}")
     print(f"White territory: {result['white_territory']}")
     print(f"Estimated Chinese-area score: black {result['black_area_chinese']}, white {result['white_area_chinese']}")
+    print(
+        f"Chinese-area result: black {result['black_result_chinese']} "
+        f"(wins at >= {result['black_win_threshold_chinese']})"
+    )
     if result["neutral_empty"]:
         print(f"Neutral empty intersections: {result['neutral_empty']}")
     if overlay:
@@ -801,7 +821,13 @@ def main() -> int:
         overlay = render_overlay(warped, board, territory, xfit, yfit)
         write_image(args.overlay, overlay)
     if args.result_image:
-        result_board = render_result_board(board, territory, counts, args.result_size)
+        result_board = render_result_board(
+            board,
+            territory,
+            counts,
+            black_chinese_area_judgement(counts["black_area_chinese"], args.board_size),
+            args.result_size,
+        )
         write_image(args.result_image, result_board)
         result["result_image"] = str(args.result_image)
 
