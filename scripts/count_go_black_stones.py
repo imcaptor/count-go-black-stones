@@ -364,11 +364,12 @@ def classify_intersections(
             dark_fraction = float((patch_gray < 82).mean())
             very_dark_fraction = float((patch_gray < 55).mean())
             bright_fraction = float((patch_gray > 165).mean())
-            bright_low_sat = float(((patch_hsv[:, 2] > 170) & (patch_hsv[:, 1] < 82)).mean())
+            bright_low_sat = float(((patch_hsv[:, 2] > 170) & (patch_hsv[:, 1] < 70)).mean())
+            white_core = float(((patch_hsv[:, 2] > 185) & (patch_hsv[:, 1] < 65)).mean())
 
             if dark_fraction > 0.30 or (mean_v < 108 and very_dark_fraction > 0.10):
                 cells.append("B")
-            elif bright_low_sat > 0.48 or (mean_v > 168 and mean_s < 82 and bright_fraction > 0.52):
+            elif (bright_low_sat > 0.48 and mean_s < 74) or (white_core > 0.36 and mean_s < 78 and bright_fraction > 0.60):
                 cells.append("W")
             else:
                 cells.append(".")
@@ -709,6 +710,10 @@ def build_result(
         warnings.append("The board looks like a scoring overlay; black_stones may include territory markers.")
     if counts["neutral_empty"] > 0:
         warnings.append("Neutral or dame intersections were found; scoring may need manual review.")
+    area_total = counts["black_area_chinese"] + counts["white_area_chinese"]
+    area_expected = board_size * board_size
+    if area_total != area_expected:
+        warnings.append(f"Area check failed: black_area_chinese + white_area_chinese = {area_total}, expected {area_expected}.")
 
     return {
         "image": str(image_path),
@@ -720,6 +725,9 @@ def build_result(
         "neutral_empty": counts["neutral_empty"],
         "black_area_chinese": counts["black_area_chinese"],
         "white_area_chinese": counts["white_area_chinese"],
+        "area_total": area_total,
+        "area_expected": area_expected,
+        "area_total_ok": area_total == area_expected,
         "likely_scoring_overlay": likely_scoring_overlay,
         "board_corners": [[round(float(x), 2), round(float(y), 2)] for x, y in corners],
         "grid": {

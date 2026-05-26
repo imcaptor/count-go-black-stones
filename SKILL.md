@@ -12,6 +12,7 @@ description: Count black Go/Weiqi stones from source board photos, estimate blac
    - `black_stones`: visible black stones on the board.
    - `black_territory`: empty intersections surrounded only by black stones.
    - `black_area_chinese`: black stones plus empty regions bordered only by black stones.
+   - `area_total_ok`: sanity check that black area plus white area equals `19*19`.
 3. Generate a clean static board with `--result-image` when the user asks for a result image. Actual stones are circles; surrounded territory is marked with small squares; the footer shows the black Chinese-area result, e.g. `黑 197 子`.
 4. Compare the script output with the image visually. Correct obvious misses before answering.
 5. State uncertainty when the board is blurry, cropped, obstructed, or has unsettled dead stones. Chinese-area scoring assumes dead stones have already been removed or are visually treated as alive.
@@ -53,6 +54,7 @@ If the supplied corners are the four outer grid intersections rather than the wo
 
 - Report `black_stones` when the user literally asks how many black stones are visible.
 - Report `black_area_chinese` when the user asks for `黑多少子`, `数子`, or `形势`.
+- Treat `area_total_ok: false` as a sign that classification or life-and-death status needs review before trusting the result.
 - In the generated result image, circles are actual stones from the source photo; small squares are territory markers computed from surrounded empty intersections; the bottom score label uses `black_area_chinese`.
 - In JSON, `board_ascii` contains only stones (`X` black, `O` white), while `result_ascii` separates stones from territory (`X/O` stones, `x/o` territory).
 - Treat `black_area_chinese` as a rules-based estimate, not an AI life-and-death judgment. If dead groups remain on the board, tell the user manual confirmation is needed.
